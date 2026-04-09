@@ -1,49 +1,23 @@
-import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+import streamlit as st
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas as pdf_canvas
 from reportlab.lib.utils import ImageReader
-from PIL import Image, ImageTk
+from PIL import Image
+import io
 import os
-import sys
-
-# ===== TEMA =====
-THEME = {
-    "bg":         "#F4F5F7",
-    "sidebar":    "#FFFFFF",
-    "card":       "#FFFFFF",
-    "primary":    "#2E86DE",
-    "primary_dk": "#1A6BBE",
-    "success":    "#27AE60",
-    "danger":     "#E74C3C",
-    "warning":    "#F39C12",
-    "text":       "#1C2B3A",
-    "text_muted": "#6B7A8D",
-    "border":     "#E0E4EA",
-    "accent":     "#EBF4FF",
-}
-
-# ===== UTILS =====
-def resource_path(relative_path):
-    try:
-        base = sys._MEIPASS
-    except AttributeError:
-        base = os.path.abspath(".")
-    return os.path.join(base, relative_path)
 
 # ===== CONFIG PDF =====
 PAGE_WIDTH, PAGE_HEIGHT = A4
-HEADER_PATH  = resource_path("header.png")
-HEADER_H     = 120
-MARGIN_BOT   = 40
-GAP          = 30
-TITLE_SPACE  = 25
+HEADER_H    = 120
+MARGIN_BOT  = 40
+GAP         = 30
+TITLE_SPACE = 25
 
-usable_h = PAGE_HEIGHT - HEADER_H - MARGIN_BOT
-BOX_H    = (usable_h - GAP) / 2
-IMG_Y_TOP    = MARGIN_BOT + BOX_H + GAP
-IMG_Y_BOT    = MARGIN_BOT
-TITLE_Y      = PAGE_HEIGHT - 110
+usable_h  = PAGE_HEIGHT - HEADER_H - MARGIN_BOT
+BOX_H     = (usable_h - GAP) / 2
+IMG_Y_TOP = MARGIN_BOT + BOX_H + GAP
+IMG_Y_BOT = MARGIN_BOT
+TITLE_Y   = PAGE_HEIGHT - 110
 
 # ===== DADOS =====
 ESTRUTURA = {
@@ -63,298 +37,209 @@ ESTRUTURA = {
     ],
 }
 
-itens = []
-
 # ===== PDF =====
-def desenhar_cabecalho(c):
-    if not os.path.exists(HEADER_PATH):
+def desenhar_cabecalho(c, header_bytes):
+    if header_bytes is None:
         return
-    img = Image.open(HEADER_PATH)
+    img = Image.open(io.BytesIO(header_bytes))
     if img.mode in ("RGBA", "P"):
         img = img.convert("RGB")
     w, h  = img.size
     scale = PAGE_WIDTH / w
-    c.drawImage(ImageReader(img), 0, PAGE_HEIGHT - h * scale,
+    buf   = io.BytesIO()
+    img.save(buf, format="JPEG")
+    buf.seek(0)
+    c.drawImage(ImageReader(buf), 0, PAGE_HEIGHT - h * scale,
                 width=PAGE_WIDTH, height=h * scale)
 
-def desenhar_imagem(c, path, y_base, box_h, topico):
-    img = Image.open(path)
+def desenhar_imagem(c, img_bytes, y_base, box_h, topico):
+    img = Image.open(io.BytesIO(img_bytes))
     if img.mode in ("RGBA", "P"):
         img = img.convert("RGB")
-    iw, ih   = img.size
-    max_w    = PAGE_WIDTH - 80
-    max_h    = box_h - TITLE_SPACE - 10
-    ratio    = min(max_w / iw, max_h / ih)
-    nw, nh   = iw * ratio, ih * ratio
-    x        = (PAGE_WIDTH - nw) / 2
-    y        = y_base + TITLE_SPACE + (max_h - nh) / 2
-    c.drawImage(ImageReader(img), x, y, width=nw, height=nh)
+    iw, ih  = img.size
+    max_w   = PAGE_WIDTH - 80
+    max_h   = box_h - TITLE_SPACE - 10
+    ratio   = min(max_w / iw, max_h / ih)
+    nw, nh  = iw * ratio, ih * ratio
+    x       = (PAGE_WIDTH - nw) / 2
+    y       = y_base + TITLE_SPACE + (max_h - nh) / 2
+    buf     = io.BytesIO()
+    img.save(buf, format="JPEG", quality=95)
+    buf.seek(0)
+    c.drawImage(ImageReader(buf), x, y, width=nw, height=nh)
     c.setFont("Helvetica", 10)
     c.drawCentredString(PAGE_WIDTH / 2, y_base + 5, topico)
 
-def gerar_pdf():
-    validos = [i for i in itens if i["path"]]
-    if not validos:
-        messagebox.showwarning("Aviso", "Adicione pelo menos uma imagem antes de gerar o PDF.")
-        return
-    path = filedialog.asksaveasfilename(
-        defaultextension=".pdf",
-        filetypes=[("PDF", "*.pdf")],
-        title="Salvar relatório como…"
-    )
-    if not path:
-        return
+def gerar_pdf(itens, header_bytes):
+    buf = io.BytesIO()
+    c   = pdf_canvas.Canvas(buf, pagesize=A4)
 
-    btn_gerar.config(state="disabled", text="Gerando…")
-    root.update_idletasks()
-
-    try:
-        c = pdf_canvas.Canvas(path, pagesize=A4)
-        sessoes = {}
-        for item in validos:
-            sessoes.setdefault(item["sessao"], []).append(item)
-
-        for sessao, lista in sessoes.items():
-            for i in range(0, len(lista), 2):
-                desenhar_cabecalho(c)
-                if i == 0:
-                    c.setFont("Helvetica-Bold", 12)
-                    c.drawString(40, TITLE_Y, sessao)
-                for j, y_pos in enumerate([IMG_Y_TOP, IMG_Y_BOT]):
-                    if i + j >= len(lista):
-                        break
-                    item = lista[i + j]
-                    desenhar_imagem(c, item["path"], y_pos, BOX_H, item["topico"])
-                c.showPage()
-        c.save()
-        messagebox.showinfo("Sucesso", f"PDF salvo em:\n{path}")
-    except Exception as e:
-        messagebox.showerror("Erro", f"Falha ao gerar PDF:\n{e}")
-    finally:
-        btn_gerar.config(state="normal", text="  Gerar PDF  ")
-        atualizar_status()
-
-# ===== UI HELPERS =====
-def fazer_botao(parent, texto, comando, cor=None, fg="#FFFFFF", small=False):
-    cor  = cor or THEME["primary"]
-    font = ("Segoe UI", 9) if small else ("Segoe UI", 10)
-    btn  = tk.Button(
-        parent, text=texto, command=comando,
-        bg=cor, fg=fg, activebackground=THEME["primary_dk"],
-        activeforeground="#FFFFFF", relief="flat",
-        font=font, cursor="hand2",
-        padx=10 if small else 14, pady=4 if small else 6,
-        bd=0
-    )
-    btn.bind("<Enter>", lambda e: btn.config(bg=_escurecer(cor)))
-    btn.bind("<Leave>", lambda e: btn.config(bg=cor))
-    return btn
-
-def _escurecer(hex_cor):
-    r = max(0, int(hex_cor[1:3], 16) - 20)
-    g = max(0, int(hex_cor[3:5], 16) - 20)
-    b = max(0, int(hex_cor[5:7], 16) - 20)
-    return f"#{r:02X}{g:02X}{b:02X}"
-
-def atualizar_status():
-    total   = len(itens)
-    com_img = sum(1 for i in itens if i["path"])
-    status_var.set(f"  {total} tópico(s) adicionado(s)  ·  {com_img} imagem(ns) selecionada(s)")
-    badge_vars[0].set(str(sum(1 for i in itens if i["sessao"] == list(ESTRUTURA)[0] and i["path"])))
-    badge_vars[1].set(str(sum(1 for i in itens if i["sessao"] == list(ESTRUTURA)[1] and i["path"])))
-    badge_vars[2].set(str(sum(1 for i in itens if i["sessao"] == list(ESTRUTURA)[2] and i["path"])))
-
-# ===== SEÇÃO =====
-def criar_secao(parent, nome_secao, badge_var):
-    card = tk.Frame(parent, bg=THEME["card"],
-                    highlightbackground=THEME["border"],
-                    highlightthickness=1)
-    card.pack(fill="both", expand=True, padx=6, pady=6)
-
-    # Cabeçalho do card
-    header = tk.Frame(card, bg=THEME["card"])
-    header.pack(fill="x", padx=14, pady=(12, 0))
-
-    tk.Label(header, text=nome_secao, bg=THEME["card"],
-             fg=THEME["text"], font=("Segoe UI", 11, "bold")).pack(side="left")
-
-    badge = tk.Label(header, textvariable=badge_var,
-                     bg=THEME["accent"], fg=THEME["primary"],
-                     font=("Segoe UI", 9, "bold"),
-                     padx=8, pady=2, relief="flat")
-    badge.pack(side="right")
-
-    sep = tk.Frame(card, bg=THEME["border"], height=1)
-    sep.pack(fill="x", padx=14, pady=8)
-
-    # Dropdown de tópico
-    ctrl = tk.Frame(card, bg=THEME["card"])
-    ctrl.pack(fill="x", padx=14, pady=(0, 8))
-
-    tk.Label(ctrl, text="Tópico:", bg=THEME["card"],
-             fg=THEME["text_muted"], font=("Segoe UI", 9)).pack(side="left")
-
-    topico_var = tk.StringVar(value=ESTRUTURA[nome_secao][0])
-    menu = ttk.Combobox(ctrl, textvariable=topico_var,
-                        values=ESTRUTURA[nome_secao],
-                        state="readonly", width=30, font=("Segoe UI", 9))
-    menu.pack(side="left", padx=(6, 0))
-
-    # Lista com scroll
-    scroll_wrap = tk.Frame(card, bg=THEME["card"])
-    scroll_wrap.pack(fill="both", expand=True, padx=8)
-
-    canvas_s = tk.Canvas(scroll_wrap, bg=THEME["card"],
-                         highlightthickness=0, bd=0)
-    scrollbar = tk.Scrollbar(scroll_wrap, orient="vertical",
-                             command=canvas_s.yview)
-
-    inner = tk.Frame(canvas_s, bg=THEME["card"])
-    inner.bind("<Configure>",
-               lambda e: canvas_s.configure(scrollregion=canvas_s.bbox("all")))
-    canvas_s.create_window((0, 0), window=inner, anchor="nw")
-    canvas_s.configure(yscrollcommand=scrollbar.set)
-
-    canvas_s.pack(side="left", fill="both", expand=True)
-    scrollbar.pack(side="right", fill="y")
-
-    def _on_mouse_wheel(event):
-        canvas_s.yview_scroll(int(-1 * (event.delta / 120)), "units")
-    canvas_s.bind("<MouseWheel>", _on_mouse_wheel)
-
-    def adicionar():
-        topico = topico_var.get()
-        item   = {"sessao": nome_secao, "topico": topico, "path": None, "frame": None}
-
-        row = tk.Frame(inner, bg=THEME["card"],
-                       highlightbackground=THEME["border"],
-                       highlightthickness=1)
-        row.pack(fill="x", padx=4, pady=3)
-        item["frame"] = row
-
-        # Linha de info
-        info = tk.Frame(row, bg=THEME["card"])
-        info.pack(fill="x", padx=10, pady=(6, 2))
-
-        tk.Label(info, text=topico, bg=THEME["card"],
-                 fg=THEME["text"], font=("Segoe UI", 9, "bold")).pack(side="left")
-
-        lbl_img = tk.Label(info, text="Nenhuma imagem selecionada",
-                           bg=THEME["card"], fg=THEME["text_muted"],
-                           font=("Segoe UI", 8))
-        lbl_img.pack(side="left", padx=(8, 0))
-
-        # Botões de ação
-        acoes = tk.Frame(row, bg=THEME["card"])
-        acoes.pack(fill="x", padx=10, pady=(0, 6))
-
-        def escolher():
-            path = filedialog.askopenfilename(
-                title="Selecionar imagem",
-                filetypes=[("Imagens", "*.jpg *.jpeg *.png")]
-            )
-            if path:
-                item["path"] = path
-                nome = os.path.basename(path)
-                lbl_img.config(text=f"✓ {nome}", fg=THEME["success"])
-                atualizar_status()
-
-        def remover():
-            row.destroy()
-            itens.remove(item)
-            atualizar_status()
-
-        def subir():
-            idx = itens.index(item)
-            if idx > 0:
-                itens[idx], itens[idx - 1] = itens[idx - 1], itens[idx]
-                _refresh(inner)
-
-        def descer():
-            idx = itens.index(item)
-            if idx < len(itens) - 1:
-                itens[idx], itens[idx + 1] = itens[idx + 1], itens[idx]
-                _refresh(inner)
-
-        itens.append(item)
-
-        fazer_botao(acoes, "Selecionar", escolher, small=True).pack(side="left", padx=(0, 4))
-        fazer_botao(acoes, "↑", subir, cor="#F0F2F5", fg=THEME["text"], small=True).pack(side="left", padx=2)
-        fazer_botao(acoes, "↓", descer, cor="#F0F2F5", fg=THEME["text"], small=True).pack(side="left", padx=2)
-        fazer_botao(acoes, "Remover", remover, cor=THEME["danger"], small=True).pack(side="left", padx=(8, 0))
-
-        atualizar_status()
-
-    # Botão adicionar
-    sep2 = tk.Frame(card, bg=THEME["border"], height=1)
-    sep2.pack(fill="x", padx=14, pady=(4, 0))
-
-    fazer_botao(card, "+ Adicionar Tópico", adicionar,
-                cor=THEME["primary"]).pack(pady=10)
-
-def _refresh(container):
-    for w in container.winfo_children():
-        w.pack_forget()
+    sessoes = {}
     for item in itens:
-        item["frame"].pack(fill="x", padx=4, pady=3)
+        sessoes.setdefault(item["sessao"], []).append(item)
 
-# ===== APP =====
-root = tk.Tk()
-root.title("Relatório Fotográfico")
-root.geometry("1140x680")
-root.minsize(900, 560)
-root.configure(bg=THEME["bg"])
+    for sessao, lista in sessoes.items():
+        for i in range(0, len(lista), 2):
+            desenhar_cabecalho(c, header_bytes)
+            if i == 0:
+                c.setFont("Helvetica-Bold", 12)
+                c.drawString(40, TITLE_Y, sessao)
+            for j, y_pos in enumerate([IMG_Y_TOP, IMG_Y_BOT]):
+                if i + j >= len(lista):
+                    break
+                item = lista[i + j]
+                desenhar_imagem(c, item["bytes"], y_pos, BOX_H, item["topico"])
+            c.showPage()
 
-# TTK style
-style = ttk.Style()
-style.theme_use("clam")
-style.configure("TCombobox",
-                fieldbackground=THEME["bg"],
-                background=THEME["bg"],
-                foreground=THEME["text"],
-                arrowcolor=THEME["text_muted"],
-                relief="flat")
+    c.save()
+    buf.seek(0)
+    return buf
 
-# ── Topbar ──────────────────────────────────────────────
-topbar = tk.Frame(root, bg="#FFFFFF",
-                  highlightbackground=THEME["border"],
-                  highlightthickness=1)
-topbar.pack(fill="x")
+# ===== UI =====
+st.set_page_config(
+    page_title="Relatório Fotográfico",
+    page_icon="📋",
+    layout="wide"
+)
 
-tk.Label(topbar, text="Relatório Fotográfico",
-         bg="#FFFFFF", fg=THEME["text"],
-         font=("Segoe UI", 14, "bold")).pack(side="left", padx=20, pady=12)
+st.markdown("""
+<style>
+    .block-container { padding-top: 2rem; }
+    .section-card {
+        background: #FFFFFF;
+        border: 1px solid #E0E4EA;
+        border-radius: 12px;
+        padding: 1rem 1.2rem;
+        margin-bottom: 1rem;
+    }
+    .item-row {
+        background: #F8F9FB;
+        border: 1px solid #E8ECF0;
+        border-radius: 8px;
+        padding: 0.6rem 0.8rem;
+        margin-bottom: 0.5rem;
+    }
+    .stButton > button {
+        border-radius: 8px;
+        font-weight: 500;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-tk.Label(topbar, text="Auditoria de Campo",
-         bg="#FFFFFF", fg=THEME["text_muted"],
-         font=("Segoe UI", 10)).pack(side="left", padx=(0, 0), pady=12)
+# ── Header ──────────────────────────────────────────────
+st.title("📋 Relatório Fotográfico")
+st.caption("Auditoria de Campo · Configure as seções e gere o PDF")
+st.divider()
 
-btn_gerar = fazer_botao(topbar, "  Gerar PDF  ", gerar_pdf, cor=THEME["success"])
-btn_gerar.pack(side="right", padx=20, pady=10)
+# ── Cabeçalho do PDF ──────────────────────────────────────────────
+with st.expander("🖼️ Cabeçalho do PDF (opcional)", expanded=False):
+    header_file = st.file_uploader(
+        "Envie a imagem de cabeçalho (header.png)",
+        type=["png", "jpg", "jpeg"],
+        key="header"
+    )
+    if header_file:
+        st.image(header_file, use_container_width=True)
 
-# ── Colunas ──────────────────────────────────────────────
-badge_vars = [tk.StringVar(value="0") for _ in range(3)]
+header_bytes = header_file.read() if header_file else None
+if header_file:
+    header_file.seek(0)
+    header_bytes = header_file.read()
 
-cols_frame = tk.Frame(root, bg=THEME["bg"])
-cols_frame.pack(fill="both", expand=True, padx=10, pady=10)
+# ── Inicializa estado ──────────────────────────────────────────────
+if "itens" not in st.session_state:
+    st.session_state.itens = []
 
-nomes = list(ESTRUTURA.keys())
-for i in range(3):
-    col = tk.Frame(cols_frame, bg=THEME["bg"])
-    col.pack(side="left", fill="both", expand=True)
-    criar_secao(col, nomes[i], badge_vars[i])
+# ── Seções ──────────────────────────────────────────────
+colunas = st.columns(3)
 
-# ── Statusbar ──────────────────────────────────────────────
-status_var = tk.StringVar(value="  Nenhum tópico adicionado")
+for col_idx, (nome_secao, topicos) in enumerate(ESTRUTURA.items()):
+    with colunas[col_idx]:
+        itens_secao = [i for i in st.session_state.itens if i["sessao"] == nome_secao]
+        com_img     = sum(1 for i in itens_secao if i.get("bytes"))
 
-statusbar = tk.Frame(root, bg="#FFFFFF",
-                     highlightbackground=THEME["border"],
-                     highlightthickness=1, height=30)
-statusbar.pack(fill="x", side="bottom")
-statusbar.pack_propagate(False)
+        st.markdown(f"**{nome_secao}**")
+        st.caption(f"{len(itens_secao)} tópico(s) · {com_img} imagem(ns)")
 
-tk.Label(statusbar, textvariable=status_var,
-         bg="#FFFFFF", fg=THEME["text_muted"],
-         font=("Segoe UI", 9)).pack(side="left", pady=5)
+        topico_sel = st.selectbox(
+            "Tópico",
+            topicos,
+            key=f"sel_{col_idx}",
+            label_visibility="collapsed"
+        )
 
-root.mainloop()
+        if st.button("＋ Adicionar tópico", key=f"add_{col_idx}", use_container_width=True):
+            st.session_state.itens.append({
+                "sessao": nome_secao,
+                "topico": topico_sel,
+                "bytes":  None,
+                "nome":   None,
+            })
+            st.rerun()
+
+        st.markdown("---")
+
+        for idx, item in enumerate(st.session_state.itens):
+            if item["sessao"] != nome_secao:
+                continue
+
+            global_idx = st.session_state.itens.index(item)
+
+            with st.container():
+                st.markdown(f"**{item['topico']}**")
+
+                uploaded = st.file_uploader(
+                    "Imagem",
+                    type=["jpg", "jpeg", "png"],
+                    key=f"img_{global_idx}",
+                    label_visibility="collapsed"
+                )
+                if uploaded:
+                    item["bytes"] = uploaded.read()
+                    item["nome"]  = uploaded.name
+                    st.image(io.BytesIO(item["bytes"]), use_container_width=True)
+                elif item["bytes"]:
+                    st.image(io.BytesIO(item["bytes"]), use_container_width=True)
+                else:
+                    st.caption("⬆ Nenhuma imagem selecionada")
+
+                btn_cols = st.columns([1, 1, 1, 2])
+                with btn_cols[0]:
+                    if st.button("↑", key=f"up_{global_idx}") and global_idx > 0:
+                        l = st.session_state.itens
+                        l[global_idx], l[global_idx - 1] = l[global_idx - 1], l[global_idx]
+                        st.rerun()
+                with btn_cols[1]:
+                    if st.button("↓", key=f"dn_{global_idx}") and global_idx < len(st.session_state.itens) - 1:
+                        l = st.session_state.itens
+                        l[global_idx], l[global_idx + 1] = l[global_idx + 1], l[global_idx]
+                        st.rerun()
+                with btn_cols[3]:
+                    if st.button("Remover", key=f"rm_{global_idx}", type="secondary"):
+                        st.session_state.itens.pop(global_idx)
+                        st.rerun()
+
+                st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
+
+# ── Gerar PDF ──────────────────────────────────────────────
+st.divider()
+
+validos = [i for i in st.session_state.itens if i.get("bytes")]
+total   = len(st.session_state.itens)
+
+col_info, col_btn = st.columns([3, 1])
+with col_info:
+    st.caption(f"{total} tópico(s) adicionado(s) · {len(validos)} com imagem")
+
+with col_btn:
+    if st.button("📄 Gerar PDF", type="primary", use_container_width=True, disabled=len(validos) == 0):
+        with st.spinner("Gerando PDF…"):
+            pdf_buf = gerar_pdf(validos, header_bytes)
+        st.success("PDF gerado com sucesso!")
+        st.download_button(
+            label="⬇ Baixar PDF",
+            data=pdf_buf,
+            file_name="relatorio_fotografico.pdf",
+            mime="application/pdf",
+            use_container_width=True
+        )
