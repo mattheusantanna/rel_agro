@@ -15,6 +15,7 @@ def carregar_header_padrao():
         with open(DEFAULT_HEADER_PATH, "rb") as f:
             return f.read()
     return None
+
 # ===== CONFIG PDF =====
 PAGE_WIDTH, PAGE_HEIGHT = A4
 HEADER_H    = 120
@@ -65,14 +66,14 @@ def desenhar_imagem(c, img_bytes, y_base, box_h, topico):
     img = Image.open(io.BytesIO(img_bytes))
     if img.mode in ("RGBA", "P"):
         img = img.convert("RGB")
-    iw, ih  = img.size
-    max_w   = PAGE_WIDTH - 80
-    max_h   = box_h - TITLE_SPACE - 10
-    ratio   = min(max_w / iw, max_h / ih)
-    nw, nh  = iw * ratio, ih * ratio
-    x       = (PAGE_WIDTH - nw) / 2
-    y       = y_base + TITLE_SPACE + (max_h - nh) / 2
-    buf     = io.BytesIO()
+    iw, ih = img.size
+    max_w  = PAGE_WIDTH - 80
+    max_h  = box_h - TITLE_SPACE - 10
+    ratio  = min(max_w / iw, max_h / ih)
+    nw, nh = iw * ratio, ih * ratio
+    x      = (PAGE_WIDTH - nw) / 2
+    y      = y_base + TITLE_SPACE + (max_h - nh) / 2
+    buf    = io.BytesIO()
     img.save(buf, format="JPEG", quality=95)
     buf.seek(0)
     c.drawImage(ImageReader(buf), x, y, width=nw, height=nh)
@@ -114,28 +115,11 @@ st.set_page_config(
 st.markdown("""
 <style>
     .block-container { padding-top: 2rem; }
-    .section-card {
-        background: #FFFFFF;
-        border: 1px solid #E0E4EA;
-        border-radius: 12px;
-        padding: 1rem 1.2rem;
-        margin-bottom: 1rem;
-    }
-    .item-row {
-        background: #F8F9FB;
-        border: 1px solid #E8ECF0;
-        border-radius: 8px;
-        padding: 0.6rem 0.8rem;
-        margin-bottom: 0.5rem;
-    }
-    .stButton > button {
-        border-radius: 8px;
-        font-weight: 500;
-    }
+    .stButton > button { border-radius: 8px; font-weight: 500; }
 </style>
 """, unsafe_allow_html=True)
 
-# ── Header ──────────────────────────────────────────────
+# ── Título ──────────────────────────────────────────────
 st.title("📋 Relatório Fotográfico")
 st.caption("Auditoria de Campo · Configure as seções e gere o PDF")
 st.divider()
@@ -147,20 +131,18 @@ with st.expander("🖼️ Cabeçalho do PDF", expanded=False):
         type=["png", "jpg", "jpeg"],
         key="header"
     )
-
-# Usa o upload se houver, senão cai no padrão
-if header_file:
-    header_file.seek(0)
-    header_bytes = header_file.read()
-else:
-    header_bytes = carregar_header_padrao()
-
-# Mostra preview de qual cabeçalho está ativo
-if header_bytes:
-    with st.expander("🖼️ Cabeçalho do PDF", expanded=False):
+    if header_file:
+        header_file.seek(0)
+        header_bytes = header_file.read()
         st.image(io.BytesIO(header_bytes), use_container_width=True)
-        if not header_file:
+        st.caption("✓ Usando cabeçalho enviado")
+    else:
+        header_bytes = carregar_header_padrao()
+        if header_bytes:
+            st.image(io.BytesIO(header_bytes), use_container_width=True)
             st.caption("✓ Usando cabeçalho padrão · Envie um arquivo acima para substituir")
+        else:
+            st.caption("Nenhum cabeçalho encontrado. Envie uma imagem ou adicione header.png ao projeto.")
 
 # ── Inicializa estado ──────────────────────────────────────────────
 if "itens" not in st.session_state:
@@ -183,50 +165,59 @@ for col_idx, (nome_secao, topicos) in enumerate(ESTRUTURA.items()):
             key=f"sel_{col_idx}",
             label_visibility="collapsed"
         )
-        
-# Ao adicionar o item, inclui um id único
-    if st.button("＋ Adicionar tópico", key=f"add_{col_idx}", use_container_width=True):
-    st.session_state.itens.append({
-        "id":     str(uuid.uuid4()),   # ← chave estável
-        "sessao": nome_secao,
-        "topico": topico_sel,
-        "bytes":  None,
-        "nome":   None,
-    })
-    st.rerun()
+
+        if st.button("＋ Adicionar tópico", key=f"add_{col_idx}", use_container_width=True):
+            st.session_state.itens.append({
+                "id":     str(uuid.uuid4()),
+                "sessao": nome_secao,
+                "topico": topico_sel,
+                "bytes":  None,
+                "nome":   None,
+            })
+            st.rerun()
 
         st.markdown("---")
 
- for global_idx, item in enumerate(st.session_state.itens):
-    if item["sessao"] != nome_secao:
-        continue
+        for global_idx, item in enumerate(st.session_state.itens):
+            if item["sessao"] != nome_secao:
+                continue
 
-    uid = item["id"]   # ← estável mesmo após ↑ ↓
+            uid = item["id"]
 
-    uploaded = st.file_uploader(
-        "Imagem",
-        type=["jpg", "jpeg", "png"],
-        key=f"img_{uid}",              # ← usa uid
-        label_visibility="collapsed"
-    )
+            st.markdown(f"**{item['topico']}**")
 
-    btn_cols = st.columns([1, 1, 1, 2])
-    with btn_cols[0]:
-        if st.button("↑", key=f"up_{uid}") and global_idx > 0:
-            l = st.session_state.itens
-            l[global_idx], l[global_idx-1] = l[global_idx-1], l[global_idx]
-            st.rerun()
-    with btn_cols[1]:
-        if st.button("↓", key=f"dn_{uid}") and global_idx < len(st.session_state.itens) - 1:
-            l = st.session_state.itens
-            l[global_idx], l[global_idx+1] = l[global_idx+1], l[global_idx]
-            st.rerun()
-    with btn_cols[3]:
-        if st.button("Remover", key=f"rm_{uid}", type="secondary"):
-            st.session_state.itens.pop(global_idx)
-            st.rerun()       
+            uploaded = st.file_uploader(
+                "Imagem",
+                type=["jpg", "jpeg", "png"],
+                key=f"img_{uid}",
+                label_visibility="collapsed"
+            )
+            if uploaded:
+                item["bytes"] = uploaded.read()
+                item["nome"]  = uploaded.name
+                st.image(io.BytesIO(item["bytes"]), use_container_width=True)
+            elif item["bytes"]:
+                st.image(io.BytesIO(item["bytes"]), use_container_width=True)
+            else:
+                st.caption("⬆ Nenhuma imagem selecionada")
 
-                st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
+            btn_cols = st.columns([1, 1, 1, 2])
+            with btn_cols[0]:
+                if st.button("↑", key=f"up_{uid}") and global_idx > 0:
+                    l = st.session_state.itens
+                    l[global_idx], l[global_idx - 1] = l[global_idx - 1], l[global_idx]
+                    st.rerun()
+            with btn_cols[1]:
+                if st.button("↓", key=f"dn_{uid}") and global_idx < len(st.session_state.itens) - 1:
+                    l = st.session_state.itens
+                    l[global_idx], l[global_idx + 1] = l[global_idx + 1], l[global_idx]
+                    st.rerun()
+            with btn_cols[3]:
+                if st.button("Remover", key=f"rm_{uid}", type="secondary"):
+                    st.session_state.itens.pop(global_idx)
+                    st.rerun()
+
+            st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
 
 # ── Gerar PDF ──────────────────────────────────────────────
 st.divider()
