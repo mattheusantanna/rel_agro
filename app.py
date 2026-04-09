@@ -6,6 +6,14 @@ from PIL import Image
 import io
 import os
 
+# ===== HEADER DEFAULT =====
+DEFAULT_HEADER_PATH = "header.png"
+
+def carregar_header_padrao():
+    if os.path.exists(DEFAULT_HEADER_PATH):
+        with open(DEFAULT_HEADER_PATH, "rb") as f:
+            return f.read()
+    return None
 # ===== CONFIG PDF =====
 PAGE_WIDTH, PAGE_HEIGHT = A4
 HEADER_H    = 120
@@ -132,19 +140,26 @@ st.caption("Auditoria de Campo · Configure as seções e gere o PDF")
 st.divider()
 
 # ── Cabeçalho do PDF ──────────────────────────────────────────────
-with st.expander("🖼️ Cabeçalho do PDF (opcional)", expanded=False):
+with st.expander("🖼️ Cabeçalho do PDF", expanded=False):
     header_file = st.file_uploader(
-        "Envie a imagem de cabeçalho (header.png)",
+        "Substituir cabeçalho (opcional)",
         type=["png", "jpg", "jpeg"],
         key="header"
     )
-    if header_file:
-        st.image(header_file, use_container_width=True)
 
-header_bytes = header_file.read() if header_file else None
+# Usa o upload se houver, senão cai no padrão
 if header_file:
     header_file.seek(0)
     header_bytes = header_file.read()
+else:
+    header_bytes = carregar_header_padrao()
+
+# Mostra preview de qual cabeçalho está ativo
+if header_bytes:
+    with st.expander("🖼️ Cabeçalho do PDF", expanded=False):
+        st.image(io.BytesIO(header_bytes), use_container_width=True)
+        if not header_file:
+            st.caption("✓ Usando cabeçalho padrão · Envie um arquivo acima para substituir")
 
 # ── Inicializa estado ──────────────────────────────────────────────
 if "itens" not in st.session_state:
