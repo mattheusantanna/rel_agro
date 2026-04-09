@@ -5,6 +5,7 @@ from reportlab.lib.utils import ImageReader
 from PIL import Image
 import io
 import os
+import uuid
 
 # ===== HEADER DEFAULT =====
 DEFAULT_HEADER_PATH = "header.png"
@@ -182,57 +183,48 @@ for col_idx, (nome_secao, topicos) in enumerate(ESTRUTURA.items()):
             key=f"sel_{col_idx}",
             label_visibility="collapsed"
         )
-
-        if st.button("＋ Adicionar tópico", key=f"add_{col_idx}", use_container_width=True):
-            st.session_state.itens.append({
-                "sessao": nome_secao,
-                "topico": topico_sel,
-                "bytes":  None,
-                "nome":   None,
-            })
-            st.rerun()
+        
+# Ao adicionar o item, inclui um id único
+    if st.button("＋ Adicionar tópico", key=f"add_{col_idx}", use_container_width=True):
+    st.session_state.itens.append({
+        "id":     str(uuid.uuid4()),   # ← chave estável
+        "sessao": nome_secao,
+        "topico": topico_sel,
+        "bytes":  None,
+        "nome":   None,
+    })
+    st.rerun()
 
         st.markdown("---")
 
-        for idx, item in enumerate(st.session_state.itens):
-            if item["sessao"] != nome_secao:
-                continue
+ for global_idx, item in enumerate(st.session_state.itens):
+    if item["sessao"] != nome_secao:
+        continue
 
-            global_idx = st.session_state.itens.index(item)
+    uid = item["id"]   # ← estável mesmo após ↑ ↓
 
-            with st.container():
-                st.markdown(f"**{item['topico']}**")
+    uploaded = st.file_uploader(
+        "Imagem",
+        type=["jpg", "jpeg", "png"],
+        key=f"img_{uid}",              # ← usa uid
+        label_visibility="collapsed"
+    )
 
-                uploaded = st.file_uploader(
-                    "Imagem",
-                    type=["jpg", "jpeg", "png"],
-                    key=f"img_{global_idx}",
-                    label_visibility="collapsed"
-                )
-                if uploaded:
-                    item["bytes"] = uploaded.read()
-                    item["nome"]  = uploaded.name
-                    st.image(io.BytesIO(item["bytes"]), use_container_width=True)
-                elif item["bytes"]:
-                    st.image(io.BytesIO(item["bytes"]), use_container_width=True)
-                else:
-                    st.caption("⬆ Nenhuma imagem selecionada")
-
-                btn_cols = st.columns([1, 1, 1, 2])
-                with btn_cols[0]:
-                    if st.button("↑", key=f"up_{global_idx}") and global_idx > 0:
-                        l = st.session_state.itens
-                        l[global_idx], l[global_idx - 1] = l[global_idx - 1], l[global_idx]
-                        st.rerun()
-                with btn_cols[1]:
-                    if st.button("↓", key=f"dn_{global_idx}") and global_idx < len(st.session_state.itens) - 1:
-                        l = st.session_state.itens
-                        l[global_idx], l[global_idx + 1] = l[global_idx + 1], l[global_idx]
-                        st.rerun()
-                with btn_cols[3]:
-                    if st.button("Remover", key=f"rm_{global_idx}", type="secondary"):
-                        st.session_state.itens.pop(global_idx)
-                        st.rerun()
+    btn_cols = st.columns([1, 1, 1, 2])
+    with btn_cols[0]:
+        if st.button("↑", key=f"up_{uid}") and global_idx > 0:
+            l = st.session_state.itens
+            l[global_idx], l[global_idx-1] = l[global_idx-1], l[global_idx]
+            st.rerun()
+    with btn_cols[1]:
+        if st.button("↓", key=f"dn_{uid}") and global_idx < len(st.session_state.itens) - 1:
+            l = st.session_state.itens
+            l[global_idx], l[global_idx+1] = l[global_idx+1], l[global_idx]
+            st.rerun()
+    with btn_cols[3]:
+        if st.button("Remover", key=f"rm_{uid}", type="secondary"):
+            st.session_state.itens.pop(global_idx)
+            st.rerun()       
 
                 st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
 
