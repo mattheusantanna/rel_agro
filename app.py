@@ -217,12 +217,18 @@ for col_idx, (nome_secao, topicos) in enumerate(ESTRUTURA.items()):
             if uploaded is not None:
                 st.session_state[bytes_key] = uploaded.read()
             
-            # Se o widget foi limpo E não há bytes salvos → usuário removeu
-            if uploaded is None and bytes_key not in st.session_state:
+            # Se há arquivo novo → salva
+            if uploaded is not None:
+                file_bytes = uploaded.read()
+                st.session_state[bytes_key] = file_bytes
+                item["bytes"] = file_bytes
+            
+            # Se o uploader está vazio → limpar estado antigo
+            else:
+                if bytes_key in st.session_state:
+                    del st.session_state[bytes_key]
                 item["bytes"] = None
                 item["nome"]  = None
-            elif bytes_key in st.session_state:
-                item["bytes"] = st.session_state[bytes_key]
             
             # Preview apenas se aberto E ainda tem imagem
             if uid in st.session_state.preview_aberto:
