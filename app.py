@@ -155,7 +155,7 @@ if "preview_aberto" not in st.session_state:
 colunas = st.columns(3)
 
 for col_idx, (nome_secao, topicos) in enumerate(ESTRUTURA.items()):
-    with colunas[col_idx]:
+    with colunas[col_idx]:                                              # ← abre bloco da coluna
         itens_secao = [i for i in st.session_state.itens if i["sessao"] == nome_secao]
         com_img     = sum(1 for i in itens_secao if i.get("bytes"))
 
@@ -202,33 +202,33 @@ for col_idx, (nome_secao, topicos) in enumerate(ESTRUTURA.items()):
                         st.session_state.preview_aberto.add(uid)
                     st.rerun()
 
-            # Preview apenas se aberto
-        uploaded = st.file_uploader(
-            "Imagem",
-            type=["jpg", "jpeg", "png"],
-            key=f"img_{uid}",
-            label_visibility="collapsed"
-        )
-        
-        # Se havia arquivo e agora não há mais → usuário removeu
-        if uploaded is None and f"img_{uid}" in st.session_state:
-            item["bytes"] = None
-            item["nome"]  = None
-        
-        # Se há arquivo novo → salva
-        if uploaded is not None:
-            item["bytes"] = uploaded.read()
-            item["nome"]  = uploaded.name
-        
-        # Preview apenas se aberto E ainda tem imagem
-        if uid in st.session_state.preview_aberto:
-            if item["bytes"]:
-                st.image(io.BytesIO(item["bytes"]), use_container_width=True)
-            else:
-                st.session_state.preview_aberto.discard(uid)
-                st.caption("⬆ Nenhuma imagem selecionada ainda")
+            # Upload sempre visível
+            uploaded = st.file_uploader(
+                "Imagem",
+                type=["jpg", "jpeg", "png"],
+                key=f"img_{uid}",
+                label_visibility="collapsed"
+            )
 
-            # Botões de ação
+            # Se havia arquivo e agora não há mais → usuário removeu
+            if uploaded is None and f"img_{uid}" in st.session_state:
+                item["bytes"] = None
+                item["nome"]  = None
+
+            # Se há arquivo novo → salva
+            if uploaded is not None:
+                item["bytes"] = uploaded.read()
+                item["nome"]  = uploaded.name
+
+            # Preview apenas se aberto E ainda tem imagem
+            if uid in st.session_state.preview_aberto:
+                if item["bytes"]:
+                    st.image(io.BytesIO(item["bytes"]), use_container_width=True)
+                else:
+                    st.session_state.preview_aberto.discard(uid)
+                    st.caption("⬆ Nenhuma imagem selecionada ainda")
+
+            # Botões de ação — sempre visíveis, fora do bloco de preview
             btn_cols = st.columns([1, 1, 1, 2])
             with btn_cols[0]:
                 if st.button("↑", key=f"up_{uid}") and global_idx > 0:
@@ -247,6 +247,7 @@ for col_idx, (nome_secao, topicos) in enumerate(ESTRUTURA.items()):
                     st.rerun()
 
             st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
+                                                                        # ← fecha bloco da coluna
 
 # ── Gerar PDF ──────────────────────────────────────────────
 st.divider()
