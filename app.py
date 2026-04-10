@@ -35,40 +35,15 @@ ESTRUTURA = {
         "PROPRIEDADE",
         "VISTA 1 – TALHÃO AUDITADO",
         "VISTA 2 – TALHÃO AUDITADO",
-        "ARQUITETURA DE PLANTA",
-        "AFERIÇÃO DA TAXA DE SEMEADURA EFETIVA (1 METRO) – PONTO 1",
-        "AFERIÇÃO DA TAXA DE SEMEADURA EFETIVA (1 METRO) – PONTO 2",
-        "AFERIÇÃO DA TAXA DE SEMEADURA EFETIVA (1 METRO) – PONTO 3",
-        "ALTURA DE INSERÇÃO DE 1ª VAGEM",
-        "ESPAÇAMENTO ENTRE LINHAS",
-        "NÚMERO DE GRÃOS POR VAGEM",
     ],
     "Colheita – Operação e Máquinas": [
         "GRANELEIRO VÁZIO – COLHEDORA",
-        "CAMINHÃO 1 – CAÇAMBA VÁZIA (VISTA FRONTAL)",
-        "COLHEDORA – VISTA LATERAL",
-        "PERDA DE PRODUTIVIDADE",
+        "CAMINHÃO 1 – CAÇAMBA VÁZIA",
     ],
     "Transbordo de Produção Auditada": [
         "CAMINHÕES – PLACA FRONTAL",
-        "CAMINHÕES – PLACA TRASEIRA",
-        "LACRES - FIXAÇÃO",
-        "LACRE - ROMPIMENTO",
-        "PESAGEM DO CAMINHÃO - VEÍCULO SOB A BALANÇA (VISTA FRONTAL)",
-        "PESAGEM DO CAMINHÃO – VEÍCULO SOB A BALANÇA (VISTA TRASEIRA)",
         "PESO DE ENTRADA",
         "CERTIFICADO DE CALIBRAÇÃO",
-        "MEDIDOR DE UMIDADE – DISPLAY",
-        "IMPUREZA",
-        "PESO DE SAIDA",
-        "ROMANEIO DE CARGA",
-        "AMOSTRA DE MATÉRIA SECA",
-        "PESO DE 1.000 GRÃOS – AMOSTRA 1",
-        "PESO DE 1.000 GRÃOS – AMOSTRA 2",
-        "PESO DE 1.000 GRÃOS – AMOSTRA 3",
-        "AFERIÇÃO DE GPS- MEDIÇÃO 1",
-        "AFERIÇÃO DE GPS- MEDIÇÃO 2",
-        "AFERIÇÃO DE GPS- MEDIÇÃO 3",
     ],
 }
 
@@ -173,6 +148,9 @@ with st.expander("🖼️ Cabeçalho do PDF", expanded=False):
 if "itens" not in st.session_state:
     st.session_state.itens = []
 
+if "preview_aberto" not in st.session_state:
+    st.session_state.preview_aberto = set()
+
 # ── Seções ──────────────────────────────────────────────
 colunas = st.columns(3)
 
@@ -209,8 +187,22 @@ for col_idx, (nome_secao, topicos) in enumerate(ESTRUTURA.items()):
 
             uid = item["id"]
 
-            st.markdown(f"**{item['topico']}**")
+            # Linha com nome do tópico e botão de toggle
+            col_nome, col_toggle = st.columns([5, 1])
+            with col_nome:
+                tem_img = "✓" if item["bytes"] else "○"
+                st.markdown(f"{tem_img} **{item['topico']}**")
+            with col_toggle:
+                aberto = uid in st.session_state.preview_aberto
+                label  = "▲" if aberto else "▼"
+                if st.button(label, key=f"toggle_{uid}"):
+                    if aberto:
+                        st.session_state.preview_aberto.discard(uid)
+                    else:
+                        st.session_state.preview_aberto.add(uid)
+                    st.rerun()
 
+            # Upload sempre visível
             uploaded = st.file_uploader(
                 "Imagem",
                 type=["jpg", "jpeg", "png"],
@@ -220,12 +212,15 @@ for col_idx, (nome_secao, topicos) in enumerate(ESTRUTURA.items()):
             if uploaded:
                 item["bytes"] = uploaded.read()
                 item["nome"]  = uploaded.name
-                st.image(io.BytesIO(item["bytes"]), use_container_width=True)
-            elif item["bytes"]:
-                st.image(io.BytesIO(item["bytes"]), use_container_width=True)
-            else:
-                st.caption("⬆ Nenhuma imagem selecionada")
 
+            # Preview apenas se aberto
+            if uid in st.session_state.preview_aberto:
+                if item["bytes"]:
+                    st.image(io.BytesIO(item["bytes"]), use_container_width=True)
+                else:
+                    st.caption("⬆ Nenhuma imagem selecionada ainda")
+
+            # Botões de ação
             btn_cols = st.columns([1, 1, 1, 2])
             with btn_cols[0]:
                 if st.button("↑", key=f"up_{uid}") and global_idx > 0:
@@ -240,6 +235,7 @@ for col_idx, (nome_secao, topicos) in enumerate(ESTRUTURA.items()):
             with btn_cols[3]:
                 if st.button("Remover", key=f"rm_{uid}", type="secondary"):
                     st.session_state.itens.pop(global_idx)
+                    st.session_state.preview_aberto.discard(uid)
                     st.rerun()
 
             st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
