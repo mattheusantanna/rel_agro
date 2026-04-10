@@ -215,11 +215,13 @@ for col_idx, (nome_secao, topicos) in enumerate(ESTRUTURA.items()):
             uid = item["id"]
 
             # Linha com nome do tópico e botão de toggle
-            col_nome, col_toggle = st.columns([5, 1])
-            with col_nome:
+        with col_nome:
             # calcula índice do item dentro da seção
-            itens_da_secao = [i for i in st.session_state.itens if i["sessao"] == nome_secao]
-            numero = itens_da_secao.index(item) + 1
+                itens_da_secao = [i for i in st.session_state.itens if i["sessao"] == nome_secao]
+                numero = itens_da_secao.index(item) + 1
+            
+                tem_img = "✓" if item["bytes"] else "○"
+                st.markdown(f"{tem_img} **{numero}. {item['topico']}**")
         
             tem_img = "✓" if item["bytes"] else "○"
             st.markdown(f"{tem_img} **{numero}. {item['topico']}**")
