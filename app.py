@@ -209,23 +209,26 @@ for col_idx, (nome_secao, topicos) in enumerate(ESTRUTURA.items()):
                 key=f"img_{uid}",
                 label_visibility="collapsed"
             )
-
-            # Se havia arquivo e agora não há mais → usuário removeu
-            if uploaded is None and f"img_{uid}" in st.session_state:
+            
+            # Chave auxiliar para guardar os bytes no session_state
+            bytes_key = f"bytes_{uid}"
+            
+            # Se há arquivo novo → salva no session_state E no item
+            if uploaded is not None:
+                st.session_state[bytes_key] = uploaded.read()
+            
+            # Se o widget foi limpo E não há bytes salvos → usuário removeu
+            if uploaded is None and bytes_key not in st.session_state:
                 item["bytes"] = None
                 item["nome"]  = None
-
-            # Se há arquivo novo → salva
-            if uploaded is not None:
-                item["bytes"] = uploaded.read()
-                item["nome"]  = uploaded.name
-
+            elif bytes_key in st.session_state:
+                item["bytes"] = st.session_state[bytes_key]
+            
             # Preview apenas se aberto E ainda tem imagem
             if uid in st.session_state.preview_aberto:
                 if item["bytes"]:
                     st.image(io.BytesIO(item["bytes"]), use_container_width=True)
                 else:
-                    st.session_state.preview_aberto.discard(uid)
                     st.caption("⬆ Nenhuma imagem selecionada ainda")
 
             # Botões de ação — sempre visíveis, fora do bloco de preview
@@ -244,6 +247,7 @@ for col_idx, (nome_secao, topicos) in enumerate(ESTRUTURA.items()):
                 if st.button("Remover", key=f"rm_{uid}", type="secondary"):
                     st.session_state.itens.pop(global_idx)
                     st.session_state.preview_aberto.discard(uid)
+                    st.session_state.pop(f"bytes_{uid}", None)  # ← limpa bytes auxiliar
                     st.rerun()
 
             st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
