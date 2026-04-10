@@ -202,23 +202,31 @@ for col_idx, (nome_secao, topicos) in enumerate(ESTRUTURA.items()):
                         st.session_state.preview_aberto.add(uid)
                     st.rerun()
 
-            # Upload sempre visível
-            uploaded = st.file_uploader(
-                "Imagem",
-                type=["jpg", "jpeg", "png"],
-                key=f"img_{uid}",
-                label_visibility="collapsed"
-            )
-            if uploaded:
-                item["bytes"] = uploaded.read()
-                item["nome"]  = uploaded.name
-
             # Preview apenas se aberto
-            if uid in st.session_state.preview_aberto:
-                if item["bytes"]:
-                    st.image(io.BytesIO(item["bytes"]), use_container_width=True)
-                else:
-                    st.caption("⬆ Nenhuma imagem selecionada ainda")
+        uploaded = st.file_uploader(
+            "Imagem",
+            type=["jpg", "jpeg", "png"],
+            key=f"img_{uid}",
+            label_visibility="collapsed"
+        )
+        
+        # Se havia arquivo e agora não há mais → usuário removeu
+        if uploaded is None and f"img_{uid}" in st.session_state:
+            item["bytes"] = None
+            item["nome"]  = None
+        
+        # Se há arquivo novo → salva
+        if uploaded is not None:
+            item["bytes"] = uploaded.read()
+            item["nome"]  = uploaded.name
+        
+        # Preview apenas se aberto E ainda tem imagem
+        if uid in st.session_state.preview_aberto:
+            if item["bytes"]:
+                st.image(io.BytesIO(item["bytes"]), use_container_width=True)
+            else:
+                st.session_state.preview_aberto.discard(uid)
+                st.caption("⬆ Nenhuma imagem selecionada ainda")
 
             # Botões de ação
             btn_cols = st.columns([1, 1, 1, 2])
