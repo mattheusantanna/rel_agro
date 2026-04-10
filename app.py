@@ -92,18 +92,44 @@ def desenhar_imagem(c, img_bytes, y_base, box_h, topico):
     if img.mode in ("RGBA", "P"):
         img = img.convert("RGB")
     iw, ih = img.size
-    max_w  = PAGE_WIDTH - 80
-    max_h  = box_h - TITLE_SPACE - 10
-    ratio  = min(max_w / iw, max_h / ih)
+
+    MARGIN_X   = 40        # margem lateral da caixa
+    LABEL_H    = 18        # altura da faixa do tópico na parte inferior
+    PADDING    = 6         # espaço interno entre borda e imagem
+
+    box_x = MARGIN_X
+    box_w = PAGE_WIDTH - 2 * MARGIN_X
+    box_y = y_base
+
+    # Área disponível para a foto dentro da caixa
+    img_area_w = box_w - 2 * PADDING
+    img_area_h = box_h - LABEL_H - 2 * PADDING
+
+    ratio  = min(img_area_w / iw, img_area_h / ih)
     nw, nh = iw * ratio, ih * ratio
-    x      = (PAGE_WIDTH - nw) / 2
-    y      = y_base + TITLE_SPACE + (max_h - nh) / 2
-    buf    = io.BytesIO()
+
+    # Centraliza a foto dentro da área
+    img_x = box_x + PADDING + (img_area_w - nw) / 2
+    img_y = box_y + LABEL_H + PADDING + (img_area_h - nh) / 2
+
+    # Desenha a imagem
+    buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=95)
     buf.seek(0)
-    c.drawImage(ImageReader(buf), x, y, width=nw, height=nh)
-    c.setFont("Helvetica", 10)
-    c.drawCentredString(PAGE_WIDTH / 2, y_base + 5, topico)
+    c.drawImage(ImageReader(buf), img_x, img_y, width=nw, height=nh)
+
+    # Borda externa da caixa inteira
+    c.setStrokeColorRGB(0, 0, 0)
+    c.setLineWidth(0.8)
+    c.rect(box_x, box_y, box_w, box_h)
+
+    # Linha separadora acima do tópico
+    c.line(box_x, box_y + LABEL_H, box_x + box_w, box_y + LABEL_H)
+
+    # Texto do tópico na faixa inferior
+    c.setFont("Helvetica-Bold", 8)
+    c.setFillColorRGB(0, 0, 0)
+    c.drawString(box_x + PADDING, box_y + 5, topico)
 
 def gerar_pdf(itens, header_bytes):
     buf = io.BytesIO()
