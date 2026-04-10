@@ -146,33 +146,48 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ── Título ──────────────────────────────────────────────
 st.title("📋 Relatório Fotográfico")
 st.caption("Auditoria de Campo · Configure as seções e gere o PDF")
 st.divider()
 
-# ── Cabeçalho ─────────────────
+# ── Cabeçalho do PDF ──────────────────────────────────────────────
 with st.expander("🖼️ Cabeçalho do PDF", expanded=False):
-    header_file = st.file_uploader("Substituir cabeçalho (opcional)", type=["png","jpg","jpeg"], key="header")
+    header_file = st.file_uploader(
+        "Substituir cabeçalho (opcional)",
+        type=["png", "jpg", "jpeg"],
+        key="header"
+    )
     if header_file:
+        header_file.seek(0)
         header_bytes = header_file.read()
         st.image(io.BytesIO(header_bytes), use_container_width=True)
+        st.caption("✓ Usando cabeçalho enviado")
     else:
         header_bytes = carregar_header_padrao()
+        if header_bytes:
+            st.image(io.BytesIO(header_bytes), use_container_width=True)
+            st.caption("✓ Usando cabeçalho padrão · Envie um arquivo acima para substituir")
+        else:
+            st.caption("Nenhum cabeçalho encontrado. Envie uma imagem ou adicione header.png ao projeto.")
 
-# ── Estado ─────────────────
+# ── Inicializa estado ──────────────────────────────────────────────
 if "itens" not in st.session_state:
     st.session_state.itens = []
 
 if "preview_aberto" not in st.session_state:
     st.session_state.preview_aberto = set()
 
-# ── Seções ─────────────────
+# ── Seções ──────────────────────────────────────────────
 colunas = st.columns(3)
 
 for col_idx, (nome_secao, topicos) in enumerate(ESTRUTURA.items()):
     with colunas[col_idx]:
+        itens_secao = [i for i in st.session_state.itens if i["sessao"] == nome_secao]
+        com_img     = sum(1 for i in itens_secao if i.get("bytes"))
 
         st.markdown(f"**{nome_secao}**")
+        st.caption(f"{len(itens_secao)} tópico(s) · {com_img} imagem(ns)")
 
         topico_sel = st.selectbox(
             "Tópico",
@@ -183,11 +198,11 @@ for col_idx, (nome_secao, topicos) in enumerate(ESTRUTURA.items()):
 
         if st.button("＋ Adicionar tópico", key=f"add_{col_idx}", use_container_width=True):
             st.session_state.itens.append({
-                "id": str(uuid.uuid4()),
+                "id":     str(uuid.uuid4()),
                 "sessao": nome_secao,
                 "topico": topico_sel,
-                "bytes": None,
-                "nome": None,
+                "bytes":  None,
+                "nome":   None,
             })
             st.rerun()
 
@@ -199,55 +214,55 @@ for col_idx, (nome_secao, topicos) in enumerate(ESTRUTURA.items()):
 
             uid = item["id"]
 
+            # Linha com nome do tópico e botão de toggle
             col_nome, col_toggle = st.columns([5, 1])
-
             with col_nome:
                 itens_da_secao = [i for i in st.session_state.itens if i["sessao"] == nome_secao]
                 numero = itens_da_secao.index(item) + 1
 
                 tem_img = "✓" if item["bytes"] else "○"
                 st.markdown(f"{tem_img} **{numero}. {item['topico']}**")
-
+                
             with col_toggle:
                 aberto = uid in st.session_state.preview_aberto
-                if st.button("▲" if aberto else "▼", key=f"toggle_{uid}"):
+                label  = "▲" if aberto else "▼"
+                if st.button(label, key=f"toggle_{uid}"):
                     if aberto:
                         st.session_state.preview_aberto.discard(uid)
                     else:
                         st.session_state.preview_aberto.add(uid)
                     st.rerun()
 
+            # Upload sempre visível
             uploaded = st.file_uploader(
                 "Imagem",
                 type=["jpg", "jpeg", "png"],
                 key=f"img_{uid}",
                 label_visibility="collapsed"
             )
-
             if uploaded:
                 item["bytes"] = uploaded.read()
                 item["nome"]  = uploaded.name
 
+            # Preview apenas se aberto
             if uid in st.session_state.preview_aberto:
                 if item["bytes"]:
                     st.image(io.BytesIO(item["bytes"]), use_container_width=True)
                 else:
                     st.caption("⬆ Nenhuma imagem selecionada ainda")
 
+            # Botões de ação
             btn_cols = st.columns([1, 1, 1, 2])
-
             with btn_cols[0]:
                 if st.button("↑", key=f"up_{uid}") and global_idx > 0:
                     l = st.session_state.itens
                     l[global_idx], l[global_idx - 1] = l[global_idx - 1], l[global_idx]
                     st.rerun()
-
             with btn_cols[1]:
                 if st.button("↓", key=f"dn_{uid}") and global_idx < len(st.session_state.itens) - 1:
                     l = st.session_state.itens
                     l[global_idx], l[global_idx + 1] = l[global_idx + 1], l[global_idx]
                     st.rerun()
-
             with btn_cols[3]:
                 if st.button("Remover", key=f"rm_{uid}", type="secondary"):
                     st.session_state.itens.pop(global_idx)
@@ -256,11 +271,25 @@ for col_idx, (nome_secao, topicos) in enumerate(ESTRUTURA.items()):
 
             st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
 
-# ── PDF ─────────────────
+# ── Gerar PDF ──────────────────────────────────────────────
 st.divider()
 
 validos = [i for i in st.session_state.itens if i.get("bytes")]
+total   = len(st.session_state.itens)
 
-if st.button("📄 Gerar PDF", disabled=len(validos)==0):
-    pdf = gerar_pdf(validos, header_bytes)
-    st.download_button("⬇ Baixar PDF", pdf, "relatorio.pdf")
+col_info, col_btn = st.columns([3, 1])
+with col_info:
+    st.caption(f"{total} tópico(s) adicionado(s) · {len(validos)} com imagem")
+
+with col_btn:
+    if st.button("📄 Gerar PDF", type="primary", use_container_width=True, disabled=len(validos) == 0):
+        with st.spinner("Gerando PDF…"):
+            pdf_buf = gerar_pdf(validos, header_bytes)
+        st.success("PDF gerado com sucesso!")
+        st.download_button(
+            label="⬇ Baixar PDF",
+            data=pdf_buf,
+            file_name="relatorio_fotografico.pdf",
+            mime="application/pdf",
+            use_container_width=True
+        )
