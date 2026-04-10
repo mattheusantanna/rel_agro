@@ -112,55 +112,33 @@ st.set_page_config(
     layout="wide"
 )
 
-st.markdown("""
-<style>
-    .block-container { padding-top: 2rem; }
-    .stButton > button { border-radius: 8px; font-weight: 500; }
-</style>
-""", unsafe_allow_html=True)
-
-# ── Título ──────────────────────────────────────────────
 st.title("📋 Relatório Fotográfico")
 st.caption("Auditoria de Campo · Configure as seções e gere o PDF")
 st.divider()
 
-# ── Cabeçalho do PDF ──────────────────────────────────────────────
-with st.expander("🖼️ Cabeçalho do PDF", expanded=False):
-    header_file = st.file_uploader(
-        "Substituir cabeçalho (opcional)",
-        type=["png", "jpg", "jpeg"],
-        key="header"
-    )
+# ── Cabeçalho ─────────────────────
+with st.expander("🖼️ Cabeçalho do PDF"):
+    header_file = st.file_uploader("Substituir cabeçalho", type=["png","jpg","jpeg"])
     if header_file:
-        header_file.seek(0)
         header_bytes = header_file.read()
-        st.image(io.BytesIO(header_bytes), use_container_width=True)
-        st.caption("✓ Usando cabeçalho enviado")
+        st.image(header_bytes, use_container_width=True)
     else:
         header_bytes = carregar_header_padrao()
-        if header_bytes:
-            st.image(io.BytesIO(header_bytes), use_container_width=True)
-            st.caption("✓ Usando cabeçalho padrão · Envie um arquivo acima para substituir")
-        else:
-            st.caption("Nenhum cabeçalho encontrado. Envie uma imagem ou adicione header.png ao projeto.")
 
-# ── Inicializa estado ──────────────────────────────────────────────
+# ── Estado ─────────────────────
 if "itens" not in st.session_state:
     st.session_state.itens = []
 
 if "preview_aberto" not in st.session_state:
     st.session_state.preview_aberto = set()
 
-# ── Seções ──────────────────────────────────────────────
+# ── UI ─────────────────────
 colunas = st.columns(3)
 
 for col_idx, (nome_secao, topicos) in enumerate(ESTRUTURA.items()):
-    with colunas[col_idx]:                                              # ← abre bloco da coluna
-        itens_secao = [i for i in st.session_state.itens if i["sessao"] == nome_secao]
-        com_img     = sum(1 for i in itens_secao if i.get("bytes"))
+    with colunas[col_idx]:
 
         st.markdown(f"**{nome_secao}**")
-        st.caption(f"{len(itens_secao)} tópico(s) · {com_img} imagem(ns)")
 
         topico_sel = st.selectbox(
             "Tópico",
@@ -169,115 +147,87 @@ for col_idx, (nome_secao, topicos) in enumerate(ESTRUTURA.items()):
             label_visibility="collapsed"
         )
 
-        if st.button("＋ Adicionar tópico", key=f"add_{col_idx}", use_container_width=True):
+        if st.button("＋ Adicionar", key=f"add_{col_idx}"):
             st.session_state.itens.append({
-                "id":     str(uuid.uuid4()),
+                "id": str(uuid.uuid4()),
                 "sessao": nome_secao,
                 "topico": topico_sel,
-                "bytes":  None,
-                "nome":   None,
+                "bytes": None,
             })
             st.rerun()
 
         st.markdown("---")
 
-        for global_idx, item in enumerate(st.session_state.itens):
+        for idx, item in enumerate(st.session_state.itens):
             if item["sessao"] != nome_secao:
                 continue
 
             uid = item["id"]
+            bytes_key = f"bytes_{uid}"
 
-            # Linha com nome do tópico e botão de toggle
-            col_nome, col_toggle = st.columns([5, 1])
+            col_nome, col_toggle = st.columns([5,1])
+
             with col_nome:
-                tem_img = "✓" if item["bytes"] else "○"
-                st.markdown(f"{tem_img} **{item['topico']}**")
+                status = "✓" if item["bytes"] else "○"
+                st.markdown(f"{status} **{item['topico']}**")
+
             with col_toggle:
                 aberto = uid in st.session_state.preview_aberto
-                label  = "▲" if aberto else "▼"
-                if st.button(label, key=f"toggle_{uid}"):
+                if st.button("▲" if aberto else "▼", key=f"tg_{uid}"):
                     if aberto:
                         st.session_state.preview_aberto.discard(uid)
                     else:
                         st.session_state.preview_aberto.add(uid)
                     st.rerun()
 
-            # Upload sempre visível
             uploaded = st.file_uploader(
                 "Imagem",
-                type=["jpg", "jpeg", "png"],
+                type=["jpg","png","jpeg"],
                 key=f"img_{uid}",
                 label_visibility="collapsed"
             )
-            
-            # Chave auxiliar para guardar os bytes no session_state
-            bytes_key = f"bytes_{uid}"
-            
-            # Se há arquivo novo → salva no session_state E no item
-            if uploaded is not None:
-                st.session_state[bytes_key] = uploaded.read()
-            
-            # Se há arquivo novo → salva
+
+            # ✅ lógica correta
             if uploaded is not None:
                 file_bytes = uploaded.read()
                 st.session_state[bytes_key] = file_bytes
-                item["bytes"] = file_bytes
-            
-            # Se o uploader está vazio → limpar estado antigo
-            else:
-                if bytes_key in st.session_state:
-                    del st.session_state[bytes_key]
-                item["bytes"] = None
-                item["nome"]  = None
-            
-            # Preview apenas se aberto E ainda tem imagem
+
+            item["bytes"] = st.session_state.get(bytes_key, None)
+
+            # preview
             if uid in st.session_state.preview_aberto:
                 if item["bytes"]:
-                    st.image(io.BytesIO(item["bytes"]), use_container_width=True)
+                    st.image(item["bytes"], use_container_width=True)
                 else:
-                    st.caption("⬆ Nenhuma imagem selecionada ainda")
+                    st.caption("Nenhuma imagem")
 
-            # Botões de ação — sempre visíveis, fora do bloco de preview
-            btn_cols = st.columns([1, 1, 1, 2])
-            with btn_cols[0]:
-                if st.button("↑", key=f"up_{uid}") and global_idx > 0:
-                    l = st.session_state.itens
-                    l[global_idx], l[global_idx - 1] = l[global_idx - 1], l[global_idx]
+            # ações
+            c1, c2, c3 = st.columns(3)
+
+            with c1:
+                if st.button("↑", key=f"up_{uid}") and idx > 0:
+                    st.session_state.itens[idx], st.session_state.itens[idx-1] = \
+                    st.session_state.itens[idx-1], st.session_state.itens[idx]
                     st.rerun()
-            with btn_cols[1]:
-                if st.button("↓", key=f"dn_{uid}") and global_idx < len(st.session_state.itens) - 1:
-                    l = st.session_state.itens
-                    l[global_idx], l[global_idx + 1] = l[global_idx + 1], l[global_idx]
+
+            with c2:
+                if st.button("↓", key=f"dn_{uid}") and idx < len(st.session_state.itens)-1:
+                    st.session_state.itens[idx], st.session_state.itens[idx+1] = \
+                    st.session_state.itens[idx+1], st.session_state.itens[idx]
                     st.rerun()
-            with btn_cols[3]:
-                if st.button("Remover", key=f"rm_{uid}", type="secondary"):
-                    st.session_state.itens.pop(global_idx)
+
+            with c3:
+                if st.button("🗑", key=f"rm_{uid}"):
+                    st.session_state.itens.pop(idx)
                     st.session_state.preview_aberto.discard(uid)
-                    st.session_state.pop(f"bytes_{uid}", None)  # ← limpa bytes auxiliar
+                    st.session_state.pop(bytes_key, None)
                     st.rerun()
 
-            st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
-                                                                        # ← fecha bloco da coluna
-
-# ── Gerar PDF ──────────────────────────────────────────────
+# ── PDF ─────────────────────
 st.divider()
 
 validos = [i for i in st.session_state.itens if i.get("bytes")]
-total   = len(st.session_state.itens)
 
-col_info, col_btn = st.columns([3, 1])
-with col_info:
-    st.caption(f"{total} tópico(s) adicionado(s) · {len(validos)} com imagem")
-
-with col_btn:
-    if st.button("📄 Gerar PDF", type="primary", use_container_width=True, disabled=len(validos) == 0):
-        with st.spinner("Gerando PDF…"):
-            pdf_buf = gerar_pdf(validos, header_bytes)
-        st.success("PDF gerado com sucesso!")
-        st.download_button(
-            label="⬇ Baixar PDF",
-            data=pdf_buf,
-            file_name="relatorio_fotografico.pdf",
-            mime="application/pdf",
-            use_container_width=True
-        )
+if st.button("📄 Gerar PDF", disabled=len(validos)==0):
+    pdf = gerar_pdf(validos, header_bytes)
+    st.download_button("⬇ Baixar", pdf, "relatorio.pdf")
