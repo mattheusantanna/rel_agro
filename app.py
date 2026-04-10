@@ -123,7 +123,9 @@ def gerar_pdf(itens, header_bytes):
                 if i + j >= len(lista):
                     break
                 item = lista[i + j]
-                desenhar_imagem(c, item["bytes"], y_pos, BOX_H, item["topico"])
+                numero = lista.index(item) + 1
+                topico_numerado = f"{numero}. {item['topico']}"
+                desenhar_imagem(c, item["bytes"], y_pos, BOX_H, topico_numerado)
             c.showPage()
 
     c.save()
@@ -215,8 +217,12 @@ for col_idx, (nome_secao, topicos) in enumerate(ESTRUTURA.items()):
             # Linha com nome do tópico e botão de toggle
             col_nome, col_toggle = st.columns([5, 1])
             with col_nome:
-                tem_img = "✓" if item["bytes"] else "○"
-                st.markdown(f"{tem_img} **{item['topico']}**")
+            # calcula índice do item dentro da seção
+            itens_da_secao = [i for i in st.session_state.itens if i["sessao"] == nome_secao]
+            numero = itens_da_secao.index(item) + 1
+        
+            tem_img = "✓" if item["bytes"] else "○"
+            st.markdown(f"{tem_img} **{numero}. {item['topico']}**")
             with col_toggle:
                 aberto = uid in st.session_state.preview_aberto
                 label  = "▲" if aberto else "▼"
