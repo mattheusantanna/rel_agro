@@ -2,7 +2,7 @@ import streamlit as st
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas as pdf_canvas
 from reportlab.lib.utils import ImageReader
-from PIL import Image
+from PIL import Image, ImageOps
 import io
 import os
 import uuid
@@ -39,7 +39,7 @@ ESTRUTURA = {
         "PROPRIEDADE",
         "VISTA 1 – TALHÃO AUDITADO",
         "VISTA 2 – TALHÃO AUDITADO",
-        "RESPONSÁVEL POR ACOMPANHAR A AUDITORIA",
+        "REPONSÁVEL POR ACOMPANHAR A AUDITORIA",
         "ARQUITETURA DE PLANTA",
         "AFERIÇÃO DA TAXA DE SEMEADURA EFETIVA (1 METRO) – PONTO 1",
         "AFERIÇÃO DA TAXA DE SEMEADURA EFETIVA (1 METRO) – PONTO 2",
@@ -79,9 +79,10 @@ ESTRUTURA = {
 
 # ===== UTILS =====
 def processar_imagem_upload(img_bytes):
-    """Reduz para resolução adequada ao PDF e comprime na entrada."""
+    """Reduz para resolução adequada ao PDF, corrige orientação EXIF e comprime na entrada."""
     try:
         img = Image.open(io.BytesIO(img_bytes))
+        img = ImageOps.exif_transpose(img)  # ✅ corrige orientação EXIF
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
         img.thumbnail((IMG_MAX_PX, IMG_MAX_PX), Image.LANCZOS)
@@ -96,6 +97,7 @@ def gerar_thumbnail(img_bytes):
     """Gera versão pequena para preview na UI."""
     try:
         img = Image.open(io.BytesIO(img_bytes))
+        img = ImageOps.exif_transpose(img)  # ✅ corrige orientação EXIF
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
         img.thumbnail((THUMB_MAX_PX, THUMB_MAX_PX), Image.LANCZOS)
@@ -126,6 +128,7 @@ def desenhar_cabecalho(c, header_bytes):
 
 def desenhar_imagem(c, img_bytes, y_base, box_h, topico):
     img = Image.open(io.BytesIO(img_bytes))
+    img = ImageOps.exif_transpose(img)  # ✅ corrige orientação EXIF no PDF
     if img.mode in ("RGBA", "P"):
         img = img.convert("RGB")
     iw, ih = img.size
@@ -161,8 +164,6 @@ def desenhar_imagem(c, img_bytes, y_base, box_h, topico):
     c.setFillColorRGB(0, 0, 0)
     c.drawString(box_x + PADDING, box_y + 5, topico)
 
-# FIX: removido ThreadPoolExecutor — geração na thread principal (Streamlit não é thread-safe)
-# FIX: progress_callback removido do PDF; barra de progresso controlada fora da função
 def gerar_pdf(itens, header_bytes):
     buf = io.BytesIO()
     c   = pdf_canvas.Canvas(buf, pagesize=A4)
@@ -181,7 +182,6 @@ def gerar_pdf(itens, header_bytes):
                 if i + j >= len(lista):
                     break
                 item            = lista[i + j]
-                # FIX: número calculado direto do índice global sem itens.index() (evita bug com duplicatas)
                 numero          = item["numero"]
                 topico_numerado = f"{numero}. {item['topico']}"
                 desenhar_imagem(c, item["bytes"], y_pos, BOX_H, topico_numerado)
@@ -278,7 +278,6 @@ for col_idx, (nome_secao, topicos) in enumerate(ESTRUTURA.items()):
 
         st.markdown("---")
 
-        # FIX: iterar com índice global correto usando enumerate sobre a lista completa
         for global_idx, item in enumerate(st.session_state.itens):
             if item["sessao"] != nome_secao:
                 continue
@@ -289,7 +288,6 @@ for col_idx, (nome_secao, topicos) in enumerate(ESTRUTURA.items()):
 
             col_nome, col_toggle = st.columns([5, 1])
             with col_nome:
-                # FIX: número baseado no índice global real (+1)
                 numero  = global_idx + 1
                 tem_img = "✓" if item["bytes"] else "○"
                 st.markdown(f"{tem_img} **{numero}. {item['topico']}**")
@@ -363,7 +361,7 @@ validos = [i for i in st.session_state.itens if i.get("bytes")]
 sem_img = [i for i in st.session_state.itens if not i.get("bytes")]
 total   = len(st.session_state.itens)
 
-# FIX: adiciona campo "numero" nos itens válidos para evitar itens.index() dentro do PDF
+# Atualiza número de cada item antes de gerar o PDF
 for idx, item in enumerate(st.session_state.itens):
     item["numero"] = idx + 1
 
@@ -381,7 +379,6 @@ with col_btn:
             barra  = st.progress(0, text="Iniciando geração…")
             status = st.empty()
 
-            # FIX: geração na thread principal — sem ThreadPoolExecutor
             barra.progress(0.2, text="Processando imagens…")
             pdf_buf = gerar_pdf(validos, header_bytes)
             barra.progress(1.0, text="Concluído!")
