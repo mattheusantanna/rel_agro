@@ -1,4 +1,3 @@
-# app.py
 import streamlit as st
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas as pdf_canvas
@@ -11,6 +10,9 @@ import uuid
 # ===== HEADER DEFAULT =====
 DEFAULT_HEADER_PATH = "header.png"
 MAX_UPLOAD_MB       = 10
+IMG_MAX_PX          = 1200
+IMG_QUALIDADE       = 82
+THUMB_MAX_PX        = 400
 
 def carregar_header_padrao():
     if os.path.exists(DEFAULT_HEADER_PATH):
@@ -75,14 +77,29 @@ ESTRUTURA = {
 }
 
 # ===== UTILS =====
-def gerar_thumbnail(img_bytes, max_px=400):
+def processar_imagem_upload(img_bytes):
+    """Reduz para resolução adequada ao PDF e comprime na entrada."""
     try:
         img = Image.open(io.BytesIO(img_bytes))
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
-        img.thumbnail((max_px, max_px))
+        img.thumbnail((IMG_MAX_PX, IMG_MAX_PX), Image.LANCZOS)
         buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=70)
+        img.save(buf, format="JPEG", quality=IMG_QUALIDADE, optimize=True)
+        buf.seek(0)
+        return buf.read()
+    except Exception:
+        return img_bytes
+
+def gerar_thumbnail(img_bytes):
+    """Gera versão pequena para preview na UI."""
+    try:
+        img = Image.open(io.BytesIO(img_bytes))
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        img.thumbnail((THUMB_MAX_PX, THUMB_MAX_PX), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=60)
         buf.seek(0)
         return buf.read()
     except Exception:
@@ -92,16 +109,19 @@ def gerar_thumbnail(img_bytes, max_px=400):
 def desenhar_cabecalho(c, header_bytes):
     if header_bytes is None:
         return
-    img = Image.open(io.BytesIO(header_bytes))
-    if img.mode in ("RGBA", "P"):
-        img = img.convert("RGB")
-    w, h  = img.size
-    scale = PAGE_WIDTH / w
-    buf   = io.BytesIO()
-    img.save(buf, format="JPEG")
-    buf.seek(0)
-    c.drawImage(ImageReader(buf), 0, PAGE_HEIGHT - h * scale,
-                width=PAGE_WIDTH, height=h * scale)
+    try:
+        img = Image.open(io.BytesIO(header_bytes))
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        w, h  = img.size
+        scale = PAGE_WIDTH / w
+        buf   = io.BytesIO()
+        img.save(buf, format="JPEG")
+        buf.seek(0)
+        c.drawImage(ImageReader(buf), 0, PAGE_HEIGHT - h * scale,
+                    width=PAGE_WIDTH, height=h * scale)
+    except Exception:
+        pass  # Cabeçalho opcional — continua sem ele se falhar
 
 def desenhar_imagem(c, img_bytes, y_base, box_h, topico):
     img = Image.open(io.BytesIO(img_bytes))
@@ -109,9 +129,9 @@ def desenhar_imagem(c, img_bytes, y_base, box_h, topico):
         img = img.convert("RGB")
     iw, ih = img.size
 
-    MARGIN_X  = 40
-    LABEL_H   = 18
-    PADDING   = 6
+    MARGIN_X = 40
+    LABEL_H  = 18
+    PADDING  = 6
 
     box_x = MARGIN_X
     box_w = PAGE_WIDTH - 2 * MARGIN_X
@@ -140,6 +160,8 @@ def desenhar_imagem(c, img_bytes, y_base, box_h, topico):
     c.setFillColorRGB(0, 0, 0)
     c.drawString(box_x + PADDING, box_y + 5, topico)
 
+# FIX: removido ThreadPoolExecutor — geração na thread principal (Streamlit não é thread-safe)
+# FIX: progress_callback removido do PDF; barra de progresso controlada fora da função
 def gerar_pdf(itens, header_bytes):
     buf = io.BytesIO()
     c   = pdf_canvas.Canvas(buf, pagesize=A4)
@@ -157,8 +179,9 @@ def gerar_pdf(itens, header_bytes):
             for j, y_pos in enumerate([IMG_Y_TOP, IMG_Y_BOT]):
                 if i + j >= len(lista):
                     break
-                item           = lista[i + j]
-                numero         = itens.index(item) + 1
+                item            = lista[i + j]
+                # FIX: número calculado direto do índice global sem itens.index() (evita bug com duplicatas)
+                numero          = item["numero"]
                 topico_numerado = f"{numero}. {item['topico']}"
                 desenhar_imagem(c, item["bytes"], y_pos, BOX_H, topico_numerado)
             c.showPage()
@@ -181,7 +204,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ── Título ──────────────────────────────────────────────
 st.title("📋 Relatório Fotográfico")
 st.caption("Auditoria de Campo · Configure as seções e gere o PDF")
 st.divider()
@@ -204,6 +226,7 @@ with st.expander("🖼️ Cabeçalho do PDF", expanded=False):
             st.image(io.BytesIO(header_bytes), use_container_width=True)
             st.caption("✓ Usando cabeçalho padrão · Envie um arquivo acima para substituir")
         else:
+            header_bytes = None
             st.caption("Nenhum cabeçalho encontrado. Envie uma imagem ou adicione header.png ao projeto.")
 
 # ── Inicializa estado ──────────────────────────────────────────────
@@ -216,7 +239,6 @@ if "preview_aberto" not in st.session_state:
 # ── Botão limpar tudo ──────────────────────────────────────────────
 if st.session_state.itens:
     if st.button("🗑️ Limpar tudo", type="secondary"):
-        # Remove também todas as chaves auxiliares de bytes/thumb
         for item in st.session_state.itens:
             uid = item["id"]
             st.session_state.pop(f"bytes_{uid}", None)
@@ -255,6 +277,7 @@ for col_idx, (nome_secao, topicos) in enumerate(ESTRUTURA.items()):
 
         st.markdown("---")
 
+        # FIX: iterar com índice global correto usando enumerate sobre a lista completa
         for global_idx, item in enumerate(st.session_state.itens):
             if item["sessao"] != nome_secao:
                 continue
@@ -263,10 +286,10 @@ for col_idx, (nome_secao, topicos) in enumerate(ESTRUTURA.items()):
             bytes_key = f"bytes_{uid}"
             thumb_key = f"thumb_{uid}"
 
-            # Linha com nome do tópico e botão de toggle
             col_nome, col_toggle = st.columns([5, 1])
             with col_nome:
-                numero  = st.session_state.itens.index(item) + 1
+                # FIX: número baseado no índice global real (+1)
+                numero  = global_idx + 1
                 tem_img = "✓" if item["bytes"] else "○"
                 st.markdown(f"{tem_img} **{numero}. {item['topico']}**")
             with col_toggle:
@@ -279,7 +302,6 @@ for col_idx, (nome_secao, topicos) in enumerate(ESTRUTURA.items()):
                         st.session_state.preview_aberto.add(uid)
                     st.rerun()
 
-            # Upload com validação de tamanho
             uploaded = st.file_uploader(
                 "Imagem",
                 type=["jpg", "jpeg", "png"],
@@ -291,20 +313,20 @@ for col_idx, (nome_secao, topicos) in enumerate(ESTRUTURA.items()):
                 if uploaded.size > MAX_UPLOAD_MB * 1024 * 1024:
                     st.warning(f"Imagem muito grande. Use arquivos menores que {MAX_UPLOAD_MB}MB.")
                 else:
-                    raw = uploaded.read()
-                    st.session_state[bytes_key] = raw
-                    st.session_state[thumb_key] = gerar_thumbnail(raw)
-                    item["bytes"] = raw
+                    raw        = uploaded.read()
+                    processado = processar_imagem_upload(raw)
+                    thumb      = gerar_thumbnail(processado)
+                    st.session_state[bytes_key] = processado
+                    st.session_state[thumb_key] = thumb
+                    item["bytes"] = processado
                     item["nome"]  = uploaded.name
 
-            # Se o widget foi limpo → usuário removeu
             if uploaded is None and bytes_key not in st.session_state:
                 item["bytes"] = None
                 item["nome"]  = None
             elif bytes_key in st.session_state:
                 item["bytes"] = st.session_state[bytes_key]
 
-            # Preview apenas se aberto E tem imagem
             if uid in st.session_state.preview_aberto:
                 if item["bytes"]:
                     thumb = st.session_state.get(thumb_key, item["bytes"])
@@ -312,7 +334,6 @@ for col_idx, (nome_secao, topicos) in enumerate(ESTRUTURA.items()):
                 else:
                     st.caption("⬆ Nenhuma imagem selecionada ainda")
 
-            # Botões de ação
             btn_cols = st.columns([1, 1, 1, 2])
             with btn_cols[0]:
                 if st.button("↑", key=f"up_{uid}") and global_idx > 0:
@@ -337,24 +358,34 @@ for col_idx, (nome_secao, topicos) in enumerate(ESTRUTURA.items()):
 # ── Gerar PDF ──────────────────────────────────────────────
 st.divider()
 
-validos   = [i for i in st.session_state.itens if i.get("bytes")]
-sem_img   = [i for i in st.session_state.itens if not i.get("bytes")]
-total     = len(st.session_state.itens)
+validos = [i for i in st.session_state.itens if i.get("bytes")]
+sem_img = [i for i in st.session_state.itens if not i.get("bytes")]
+total   = len(st.session_state.itens)
+
+# FIX: adiciona campo "numero" nos itens válidos para evitar itens.index() dentro do PDF
+for idx, item in enumerate(st.session_state.itens):
+    item["numero"] = idx + 1
 
 col_info, col_btn = st.columns([3, 1])
 with col_info:
     st.caption(f"{total} tópico(s) adicionado(s) · {len(validos)} com imagem")
     if sem_img:
-        nomes = ", ".join(i["topico"] for i in sem_img[:3])
+        nomes  = ", ".join(i["topico"] for i in sem_img[:3])
         sufixo = f" e mais {len(sem_img) - 3}..." if len(sem_img) > 3 else ""
-        st.warning(f"⚠️ {len(sem_img)} tópico(s) sem imagem e não entrarão no PDF: {nomes}{sufixo}")
+        st.warning(f"⚠️ {len(sem_img)} tópico(s) sem imagem não entrarão no PDF: {nomes}{sufixo}")
 
 with col_btn:
     if st.button("📄 Gerar PDF", type="primary", use_container_width=True, disabled=len(validos) == 0):
         try:
-            with st.spinner("Gerando PDF…"):
-                pdf_buf = gerar_pdf(validos, header_bytes)
-            st.success("PDF gerado com sucesso!")
+            barra  = st.progress(0, text="Iniciando geração…")
+            status = st.empty()
+
+            # FIX: geração na thread principal — sem ThreadPoolExecutor
+            barra.progress(0.2, text="Processando imagens…")
+            pdf_buf = gerar_pdf(validos, header_bytes)
+            barra.progress(1.0, text="Concluído!")
+            status.success("PDF gerado com sucesso!")
+
             st.download_button(
                 label="⬇ Baixar PDF",
                 data=pdf_buf,
